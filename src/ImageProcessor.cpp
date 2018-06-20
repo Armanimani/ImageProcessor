@@ -4,6 +4,7 @@
 #include <iterator>
 #include <vector>
 #include <limits>
+#include <exception>
 
 #include "UnionFind.hpp"
 
@@ -22,33 +23,58 @@ void ImageProcessor::loadFile(const std::string& path)
 	readFile_(path);
 }
 
-void ImageProcessor::removeBackground(const ImageProcessor::Color &color, const double tolerance) noexcept
+void ImageProcessor::removeBackground(const ImageProcessor::Color& backgroundColor, double tolerance, const ImageProcessor::Color replacementColor) noexcept
 {
-	UnionFind uf(width_ * height_ + 1);
-	for (auto i = 0; i != width_; ++i)
-	{
-		for (auto j = 0; j != height_; ++j)
-		{
-			auto imgCol = image_[i][j];
+	removeBackground_impl_(backgroundColor, tolerance, replacementColor);
+}
 
-			if ((imgCol.red - color.r) * (imgCol.red - color.r) + (imgCol.green - color.g) * (imgCol.green - color.g) + (imgCol.blue - color.b) * (imgCol.blue - color.b) <= tolerance * tolerance)
-			{
-				uf.connect(i * height_ + j, height_ * width_ + 1);
-			}
-		}
-	}
+void ImageProcessor::removeBackground(double tolerance, const ImageProcessor::Color& replacementColor) noexcept
+{
+	auto c1 = image_[0][0];
+	auto c2 = image_[width_ - 1][0];
+	auto c3 = image_[0][height_ - 1];
+	auto c4 = image_[width_ - 1][height_ - 1];
 
-	for (auto i = 0; i != width_; ++i)
-	{
-		for (auto j = 0; j != height_; ++j)
+	Color backgroundColor { static_cast<int>(0.25 * (c1.red + c2.red + c3.red + c4.red)), static_cast<int>(0.25 * (c1.green + c2.green + c3.green + c4.green)), static_cast<int>(0.25 * (c1.blue + c2.blue + c3.blue + c4.blue))};
+
+	removeBackground_impl_(backgroundColor, tolerance, replacementColor);
+}
+
+void ImageProcessor::cropAndSave(const std::vector<double>& divX, const std::vector<double>& divY, const std::string& path) const
+{
+	checkDivision_(divX);
+	checkDivision_(divY);
+
+	std::vector<double> X = divX;
+	std::vector<double> Y = divY;
+	X.push_back(1.0);
+	Y.push_back(1.0);
+
+	for (auto i = 0, minX = 0; i != X.size(); ++i)
+	{ 
+		int maxX = static_cast<int>(X[i] * width_); 
+
+		for (auto j = 0, minY = 0; j != Y.size(); ++j)
 		{
-			if (uf.isConnected(i * height_ + j, height_ * width_ + 1))
+			int maxY = static_cast<int>(Y[j] * height_); 
+
+			int newWidth = maxX - minX + 1;
+			int newHeight = maxY - minY + 1;
+
+			auto newImage = png::image<png::rgba_pixel>(newHeight, newWidth);
+			for (auto ii = 0; ii != newWidth; ii++)
 			{
-				auto c = image_[i][j];
-				c.alpha = 1.0;
-				image_[i][j] = c;
+				for (auto jj = 0; jj != newHeight; jj++)
+				{
+					newImage[ii][jj] = image_[ii + minX][jj + minY];
+				}
 			}
+			newImage.write(path + std::to_string(i + 1) + "x" + std::to_string(j + 1) + ".png");
+
+			minY = maxY + 1;
 		}
+
+		minX = maxX + 1;
 	}
 }
 
@@ -100,4 +126,54 @@ void ImageProcessor::readFile_(const std::string& path)
 	image_ = png::image<png::rgba_pixel>(path);
 	height_ = image_.get_height();
 	width_ = image_.get_width();
+}
+
+void ImageProcessor::removeBackground_impl_(const ImageProcessor::Color& backgroundColor, double tolerance, const ImageProcessor::Color& replacementColor) noexcept
+{
+	UnionFind uf((width_ + 1) * (height_ + 1) + 1);
+	for (auto i = 0; i != width_; ++i)
+	{
+		for (auto j = 0; j != height_; ++j)
+		{
+			auto imgCol = image_[i][j];
+
+			if ((imgCol.red - backgroundColor.r) * (imgCol.red - backgroundColor.r) + (imgCol.green - backgroundColor.g) * (imgCol.green - backgroundColor.g) + (imgCol.blue - backgroundColor.b) * (imgCol.blue - backgroundColor.b) <= tolerance * tolerance)
+			{
+				uf.connect(i * height_ + j, height_ * width_ + 1);
+			}
+		}
+	}
+	for (auto i = 0; i != width_; ++i)
+	{
+		for (auto j = 0; j != height_; ++j)
+		{
+			if (uf.isConnected(i * height_ + j, height_ * width_ + 1))
+			{
+				auto color = image_[i][j];
+				color.red = replacementColor.r;
+				color.green = replacementColor.g;
+				color.blue = replacementColor.b;
+				color.alpha = replacementColor.a;
+				image_[i][j] = color;
+			}
+		}
+	}
+}
+
+void ImageProcessor::checkDivision_(const std::vector<double>& div) const
+{
+	for (auto i = div.cbegin(); i != div.cend(); ++i)
+	{
+		if (*i >= 1.0)
+		{
+			throw std::runtime_error("Divisions element should be less than 1");
+		}
+		if (i != div.cbegin())
+		{
+			if (*i <= *(i - 1))
+			{
+				throw std::runtime_error("Divisions element should be sorted");
+			}
+		}
+	}
 }
