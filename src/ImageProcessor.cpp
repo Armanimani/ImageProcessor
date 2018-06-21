@@ -23,10 +23,6 @@ void ImageProcessor::loadFile(const std::string& path)
 	readFile_(path);
 }
 
-void ImageProcessor::removeBackground(const ImageProcessor::Color& backgroundColor, double tolerance, const ImageProcessor::Color replacementColor) noexcept
-{
-	removeBackground_impl_(backgroundColor, tolerance, replacementColor);
-}
 
 void ImageProcessor::removeBackground(double tolerance, const ImageProcessor::Color& replacementColor) noexcept
 {
@@ -37,10 +33,61 @@ void ImageProcessor::removeBackground(double tolerance, const ImageProcessor::Co
 
 	Color backgroundColor { static_cast<int>(0.25 * (c1.red + c2.red + c3.red + c4.red)), static_cast<int>(0.25 * (c1.green + c2.green + c3.green + c4.green)), static_cast<int>(0.25 * (c1.blue + c2.blue + c3.blue + c4.blue))};
 
-	removeBackground_impl_(backgroundColor, tolerance, replacementColor);
+	screen_ = std::make_unique<Screen2D>(0, width_ - 1, 0, height_ - 1);
+	for (auto i = 0; i != width_; ++i)
+	{
+		for (auto j = 0; j != height_; ++j)
+		{
+			auto imgCol = image_[i][j];
+
+			if ((imgCol.red - backgroundColor.r) * (imgCol.red - backgroundColor.r) + (imgCol.green - backgroundColor.g) * (imgCol.green - backgroundColor.g) + (imgCol.blue - backgroundColor.b) * (imgCol.blue - backgroundColor.b) <= tolerance * tolerance)
+			{
+				screen_->setValue(i, j, 1);
+			}
+		}
+	}
+
+	UnionFind uf(width_ * height_ + 1);
+	uf.connect(screen_->getIndex(0, 0), width_ * height_);
+	uf.connect(screen_->getIndex(0, height_ - 1), width_ * height_);
+	uf.connect(screen_->getIndex(width_ - 1, 0), width_ * height_);
+	uf.connect(screen_->getIndex(width_ - 1, height_ - 1), width_ * height_);
+
+	for (auto i = 0; i != width_; ++i)
+	{
+		for (auto j = 0; j != height_; ++j)
+		{
+			if (screen_->getValue(i, j) == 1)
+			{
+				if (i != width_ - 1 && screen_->getValue(i + 1, j) == 1)
+				{
+					uf.connect(screen_->getIndex(i, j), screen_->getIndex(i + 1, j));
+				}
+				if (j != height_ - 1 && screen_->getValue(i, j + 1) == 1)
+				{
+					uf.connect(screen_->getIndex(i, j), screen_->getIndex(i, j + 1));
+				}
+			}
+		}
+	}
+	for (auto i = 0; i != width_; ++i)
+	{
+		for (auto j = 0; j != height_; ++j)
+		{
+			if (uf.isConnected(screen_->getIndex(i, j), height_ * width_))
+			{
+				auto color = image_[i][j];
+				color.red = replacementColor.r;
+				color.green = replacementColor.g;
+				color.blue = replacementColor.b;
+				color.alpha = replacementColor.a;
+				image_[i][j] = color;
+			}
+		}
+	}
 }
 
-void ImageProcessor::cropAndSave(const std::vector<double>& divX, const std::vector<double>& divY, const std::string& path) const
+void ImageProcessor::divideAndSave(const std::vector<double>& divX, const std::vector<double>& divY, const std::string& path) const
 {
 	checkDivision_(divX);
 	checkDivision_(divY);
@@ -89,7 +136,7 @@ void ImageProcessor::fitImageToScreen() noexcept
 	{
 		for (auto j = 0; j != height_; ++j)
 		{
-			if (image_[i][j].alpha != 1)
+			if (image_[i][j].alpha != 0)
 			{
 				if (i < minX)
 					minX = i;
@@ -103,8 +150,8 @@ void ImageProcessor::fitImageToScreen() noexcept
 		}
 	}
 
-	int newWidth = maxX - minX + 1;
-	int newHeight = maxY - minY + 1;
+	int newWidth = maxX - minX;
+	int newHeight = maxY - minY;
 
 	auto newImage = png::image<png::rgba_pixel>(newHeight, newWidth);
 
@@ -121,43 +168,31 @@ void ImageProcessor::fitImageToScreen() noexcept
 	height_ = newHeight;
 }
 
-void ImageProcessor::readFile_(const std::string& path)
+void ImageProcessor::replaceColor(const ImageProcessor::Color& targetColor, double tolerance, const ImageProcessor::Color& replacementColor) noexcept
 {
-	image_ = png::image<png::rgba_pixel>(path);
-	height_ = image_.get_height();
-	width_ = image_.get_width();
-}
-
-void ImageProcessor::removeBackground_impl_(const ImageProcessor::Color& backgroundColor, double tolerance, const ImageProcessor::Color& replacementColor) noexcept
-{
-	UnionFind uf((width_ + 1) * (height_ + 1) + 1);
 	for (auto i = 0; i != width_; ++i)
 	{
 		for (auto j = 0; j != height_; ++j)
 		{
 			auto imgCol = image_[i][j];
 
-			if ((imgCol.red - backgroundColor.r) * (imgCol.red - backgroundColor.r) + (imgCol.green - backgroundColor.g) * (imgCol.green - backgroundColor.g) + (imgCol.blue - backgroundColor.b) * (imgCol.blue - backgroundColor.b) <= tolerance * tolerance)
+			if ((imgCol.red - targetColor.r) * (imgCol.red - targetColor.r) + (imgCol.green - targetColor.g) * (imgCol.green - targetColor.g) + (imgCol.blue - targetColor.b) * (imgCol.blue - targetColor.b) <= tolerance * tolerance)
 			{
-				uf.connect(i * height_ + j, height_ * width_ + 1);
+				imgCol.red = replacementColor.r;
+				imgCol.green = replacementColor.g;
+				imgCol.blue = replacementColor.b;
+				imgCol.alpha = replacementColor.a;
+				image_[i][j] = imgCol;
 			}
 		}
 	}
-	for (auto i = 0; i != width_; ++i)
-	{
-		for (auto j = 0; j != height_; ++j)
-		{
-			if (uf.isConnected(i * height_ + j, height_ * width_ + 1))
-			{
-				auto color = image_[i][j];
-				color.red = replacementColor.r;
-				color.green = replacementColor.g;
-				color.blue = replacementColor.b;
-				color.alpha = replacementColor.a;
-				image_[i][j] = color;
-			}
-		}
-	}
+}
+
+void ImageProcessor::readFile_(const std::string& path)
+{
+	image_ = png::image<png::rgba_pixel>(path);
+	width_ = image_.get_height();
+	height_ = image_.get_width();
 }
 
 void ImageProcessor::checkDivision_(const std::vector<double>& div) const
