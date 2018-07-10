@@ -188,6 +188,32 @@ void ImageProcessor::replaceColor(const ImageProcessor::Color& targetColor, doub
 	}
 }
 
+std::array<double, 3> ImageProcessor::calculate_averageNonTransparentColor() const noexcept
+{
+	std::array<double, 3> ret;
+	int cnt {};
+	for (auto i = 0; i != width_; ++i)
+	{
+		for (auto j = 0; j != height_; ++j)
+		{
+			auto imgCol = image_[i][j];
+			if(static_cast<int>(imgCol.alpha) != 0)
+			{
+				ret[0] += static_cast<double>(imgCol.red);
+				ret[1] += static_cast<double>(imgCol.green);
+				ret[2] += static_cast<double>(imgCol.blue);
+				cnt++;
+			}
+		}
+	}
+
+	ret[0] /= cnt;
+	ret[1] /= cnt;
+	ret[2] /= cnt;
+
+	return ret;
+}
+
 void ImageProcessor::readFile_(const std::string& path)
 {
 	image_ = png::image<png::rgba_pixel>(path);

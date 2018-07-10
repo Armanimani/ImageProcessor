@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "../src/ImageProcessor.hpp"
+#include "ImageProcessor.hpp"
 
 void test_removeBackground(const std::string& input)
 {

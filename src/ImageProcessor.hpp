@@ -4,6 +4,7 @@
 
 #include <string>
 #include <memory>
+#include <array>
 
 #include "Screen2D.hpp"
 
@@ -25,6 +26,7 @@ public:
 	void removeBackground(double tolerance = 0.0, const ImageProcessor::Color& replacementColor = {255, 255, 255, 0}) noexcept;
 	void divideAndSave(const std::vector<double>& divX, const std::vector<double>& divY, const std::string& path) const;
 	void replaceColor(const ImageProcessor::Color& targetColor, double tolerance = 0.0, const ImageProcessor::Color& replacementColor = {255, 255, 255, 0}) noexcept;
+	std::array<double, 3> calculate_averageNonTransparentColor() const noexcept;
 
 private:
 	double width_;
